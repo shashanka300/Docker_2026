@@ -3,12 +3,9 @@ import os
 
 from openai import OpenAI
 
-LLM_BASE_URL = os.environ.get(
-    "LLM_BASE_URL",
-    "http://localhost:12434/engines/llama.cpp/v1",
-)
-LLM_MODEL = os.environ.get("LLM_MODEL", "ai/llama3.2")
-EMBED_MODEL = os.environ.get("EMBED_MODEL", "ai/mxbai-embed-large")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "llama3.2")
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "mxbai-embed-large")
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "200"))
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "20"))
 

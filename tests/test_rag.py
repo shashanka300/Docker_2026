@@ -1,15 +1,13 @@
 """Unit tests — no Docker or external services required."""
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-
-# ── chunk_text ────────────────────────────────────────────────────────────────
-
 from app.rag import chunk_text
 
+
+# ── chunk_text ────────────────────────────────────────────────────────────────
 
 def test_chunk_text_basic():
     text = " ".join(f"word{i}" for i in range(100))
@@ -21,35 +19,75 @@ def test_chunk_text_basic():
 def test_chunk_text_overlap():
     text = " ".join(str(i) for i in range(20))
     chunks = chunk_text(text, size=5, overlap=2)
-    # With overlap, last word of chunk N should appear near start of chunk N+1
+    # last word of chunk N must reappear at the start of chunk N+1
     last_word = chunks[0].split()[-1]
-    second_chunk_words = chunks[1].split()
-    assert last_word in second_chunk_words
+    assert last_word in chunks[1].split()
 
 
 def test_chunk_text_short_input():
-    text = "hello world"
-    chunks = chunk_text(text, size=400, overlap=50)
-    assert chunks == ["hello world"]
+    assert chunk_text("hello world", size=400, overlap=50) == ["hello world"]
 
 
 def test_chunk_text_empty():
     assert chunk_text("") == []
 
 
-# ── FastAPI endpoints ─────────────────────────────────────────────────────────
+# ── RAG functions ─────────────────────────────────────────────────────────────
 
-def _make_mock_conn():
-    """Return a mock psycopg connection + cursor."""
+FAKE_VEC = [0.1] * 1024
+
+
+def _mock_conn(rows=None):
     cur = MagicMock()
     cur.__enter__ = lambda s: s
     cur.__exit__ = MagicMock(return_value=False)
-    cur.fetchone.return_value = (42,)
-    cur.fetchall.return_value = []
+    cur.fetchall.return_value = rows or []
+    cur.fetchone.return_value = (0,)
     conn = MagicMock()
     conn.cursor.return_value = cur
     return conn, cur
 
+
+def test_retrieve_returns_chunks():
+    conn, cur = _mock_conn(rows=[("chunk about Docker",), ("chunk about RAG",)])
+    with patch("app.rag.embed", return_value=FAKE_VEC):
+        from app.rag import retrieve
+        results = retrieve(conn, "What is Docker?", top_k=2)
+    assert results == ["chunk about Docker", "chunk about RAG"]
+    cur.execute.assert_called_once()
+
+
+def test_retrieve_empty_db():
+    conn, _ = _mock_conn(rows=[])
+    with patch("app.rag.embed", return_value=FAKE_VEC):
+        from app.rag import retrieve
+        assert retrieve(conn, "anything") == []
+
+
+def test_answer_no_docs_returns_fallback():
+    conn, _ = _mock_conn(rows=[])
+    with patch("app.rag.embed", return_value=FAKE_VEC):
+        from app.rag import answer
+        result = answer(conn, "What is Docker?")
+    assert "No documents" in result
+
+
+def test_answer_with_context_calls_llm():
+    conn, _ = _mock_conn(rows=[("pgvector stores vectors",)])
+    mock_resp = MagicMock()
+    mock_resp.choices[0].message.content = "pgvector is a Postgres extension."
+    with (
+        patch("app.rag.embed", return_value=FAKE_VEC),
+        patch("app.rag.client") as mock_client,
+    ):
+        mock_client.chat.completions.create.return_value = mock_resp
+        from app.rag import answer
+        result = answer(conn, "What is pgvector?")
+    assert result == "pgvector is a Postgres extension."
+    mock_client.chat.completions.create.assert_called_once()
+
+
+# ── FastAPI endpoints ─────────────────────────────────────────────────────────
 
 @pytest.fixture()
 def client():
@@ -57,7 +95,7 @@ def client():
         patch("app.db.get_conn") as mock_get,
         patch("app.db.init_schema"),
     ):
-        conn, _ = _make_mock_conn()
+        conn, _ = _mock_conn()
         mock_get.return_value = conn
         from app.main import app
         with TestClient(app) as c:
@@ -72,7 +110,7 @@ def test_health_ok(client):
 
 def test_stats(client):
     with patch("app.main.get_conn") as mock_get:
-        conn, cur = _make_mock_conn()
+        conn, cur = _mock_conn()
         cur.fetchone.return_value = (7,)
         mock_get.return_value = conn
         r = client.get("/stats")
@@ -90,7 +128,7 @@ def test_ingest_text(client):
         patch("app.main.get_conn") as mock_get,
         patch("app.main.ingest", return_value=3) as mock_ingest,
     ):
-        conn, _ = _make_mock_conn()
+        conn, _ = _mock_conn()
         mock_get.return_value = conn
         r = client.post("/ingest", data={"text": "some content", "source": "test"})
     assert r.status_code == 200
@@ -98,14 +136,36 @@ def test_ingest_text(client):
     mock_ingest.assert_called_once()
 
 
+def test_ingest_sample(client, tmp_path):
+    sample = tmp_path / "docker-ai-guide.md"
+    sample.write_text("Docker is a containerisation tool.")
+    with (
+        patch("app.main.get_conn") as mock_get,
+        patch("app.main.ingest", return_value=1) as mock_ingest,
+        patch("app.main.SAMPLE_DOC", sample),
+    ):
+        conn, _ = _mock_conn()
+        mock_get.return_value = conn
+        r = client.post("/ingest/sample")
+    assert r.status_code == 200
+    assert r.json()["chunks_ingested"] == 1
+    assert r.json()["source"] == "docker-ai-guide.md"
+    mock_ingest.assert_called_once()
+
+
+def test_ingest_sample_missing(client, tmp_path):
+    with patch("app.main.SAMPLE_DOC", tmp_path / "missing.md"):
+        r = client.post("/ingest/sample")
+    assert r.status_code == 404
+
+
 def test_query_endpoint(client):
     with (
         patch("app.main.get_conn") as mock_get,
-        patch("app.main.answer", return_value="42") as mock_answer,
+        patch("app.main.answer", return_value="Containers share the host OS kernel."),
     ):
-        conn, _ = _make_mock_conn()
+        conn, _ = _mock_conn()
         mock_get.return_value = conn
-        r = client.post("/query", json={"question": "What is Docker?"})
+        r = client.post("/query", json={"question": "What is a container?"})
     assert r.status_code == 200
-    assert r.json()["answer"] == "42"
-    mock_answer.assert_called_once()
+    assert "kernel" in r.json()["answer"]
