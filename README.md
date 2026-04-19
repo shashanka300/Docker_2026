@@ -56,10 +56,10 @@ docker-compose up --build -d app
 docker-compose logs -f app          # watch live logs
 ```
 
-Run the unit tests inside Docker so the environment matches production:
+Unit tests mock all external deps, so run them locally with uv:
 
 ```bash
-docker-compose run --rm app uv run pytest -v
+uv run pytest -v
 ```
 
 ## Project layout
