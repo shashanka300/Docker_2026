@@ -4,13 +4,13 @@ A fully local RAG Q&A stack — ask questions about any document using a local L
 
 Demonstrates every concept from [Docker for AI Builders](docs/docker-ai-guide.md):
 multi-stage Dockerfile, non-root user, health checks, Docker Compose, pgvector RAG,
-Docker Model Runner, and a containerised MCP server.
+Ollama LLM serving, and a containerised MCP server.
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Browser  →  FastAPI app  →  pgvector (Postgres)    │
 │                    ↓                                │
-│           Docker Model Runner                       │
+│              Ollama container                       │
 │           (llama3.2 + mxbai-embed-large)            │
 │                                                     │
 │           mcp/postgres  ← AI agent tool access      │
@@ -19,36 +19,42 @@ Docker Model Runner, and a containerised MCP server.
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ 4.40 with **Model Runner** enabled
-  *(Settings → Features in development → Enable Docker Model Runner)*
-
-Pull the models once (stored locally, reused across runs):
+Docker — either [Docker Desktop](https://www.docker.com/products/docker-desktop/) or **Colima** (macOS/Linux):
 
 ```bash
-docker model pull ai/llama3.2
-docker model pull ai/mxbai-embed-large
+brew install colima docker docker-compose
+colima start
 ```
 
-## Run
+## Quick start
 
 ```bash
-docker compose up --build
+# 1. Start the stack (first run pulls ~4 GB of model data)
+docker compose up --build -d
+
+# 2. Pull the LLM models into Ollama (one-time, models are cached in a volume)
+docker compose exec ollama ollama pull llama3.2
+docker compose exec ollama ollama pull mxbai-embed-large
+
+# 3. Open the UI
+open http://localhost:8000
 ```
 
-Open **http://localhost:8000** in your browser.
-
+Then in the browser:
 1. Click **Load Sample Doc** — ingests `docs/docker-ai-guide.md` into pgvector
-2. Type a question in the Query panel, e.g.:
+2. Ask questions in the Query panel, e.g.:
    - *What are the 4 Dockerfile rules?*
    - *How does multi-stage build reduce image size?*
    - *What is the difference between ivfflat and hnsw?*
 
-## Local development (without Docker)
+## Local development (no Docker)
 
 ```bash
 uv sync
-# needs a local Postgres with pgvector and a running Model Runner
-DATABASE_URL=postgresql://user:pass@localhost:5432/mydb uv run uvicorn app.main:app --reload
+# needs Postgres+pgvector and Ollama running locally
+DATABASE_URL=postgresql://user:pass@localhost:5432/mydb \
+LLM_BASE_URL=http://localhost:11434/v1 \
+uv run uvicorn app.main:app --reload
 ```
 
 Run tests (no external services needed):
@@ -72,7 +78,7 @@ tests/
   test_rag.py      Unit tests (chunking + mocked FastAPI endpoints)
 init.sql           pgvector schema — mounted into Postgres on first start
 Dockerfile         Multi-stage, non-root, pinned UV, health check
-compose.yml        app + db (pgvector) + mcp-postgres
+compose.yml        app + db (pgvector) + ollama + mcp-postgres
 ```
 
 ## Dockerfile concepts illustrated
@@ -89,8 +95,17 @@ compose.yml        app + db (pgvector) + mcp-postgres
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql://user:pass@localhost:5432/mydb` | Postgres connection |
-| `LLM_BASE_URL` | `http://localhost:12434/engines/llama.cpp/v1` | Model Runner URL |
-| `LLM_MODEL` | `ai/llama3.2` | Chat model |
-| `EMBED_MODEL` | `ai/mxbai-embed-large` | Embedding model |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | Ollama API URL |
+| `LLM_MODEL` | `llama3.2` | Chat model |
+| `EMBED_MODEL` | `mxbai-embed-large` | Embedding model |
 | `CHUNK_SIZE` | `400` | Words per chunk |
 | `CHUNK_OVERLAP` | `50` | Overlap between chunks |
+
+## Useful commands
+
+```bash
+docker compose logs -f app          # app logs
+docker compose logs -f ollama       # model server logs
+docker compose down -v              # stop and wipe volumes
+docker compose exec ollama ollama list   # see pulled models
+```

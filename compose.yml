@@ -7,12 +7,14 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://user:pass@db:5432/mydb
-      # model-runner.docker.internal resolves to the Docker Desktop Model Runner
-      LLM_BASE_URL: http://model-runner.docker.internal:12434/engines/llama.cpp/v1
-      LLM_MODEL: ai/llama3.2
-      EMBED_MODEL: ai/mxbai-embed-large
+      # Ollama runs as a sibling container — reachable by service name
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_MODEL: llama3.2
+      EMBED_MODEL: mxbai-embed-large
     depends_on:
       db:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     restart: unless-stopped
 
@@ -25,7 +27,6 @@ services:
       POSTGRES_DB: mydb
     volumes:
       - db_data:/var/lib/postgresql/data
-      # init.sql runs once on first start to create the vector schema
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d mydb"]
@@ -34,17 +35,34 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ── MCP Postgres server ─────────────────────────────────────────────────────
-  # Gives AI agents a clean, isolated interface to the database.
-  # Stop this container to revoke agent access — no host changes needed.
-  mcp-postgres:
-    image: mcp/postgres
-    environment:
-      POSTGRES_CONNECTION_STRING: postgresql://user:pass@db:5432/mydb
-    depends_on:
-      db:
-        condition: service_healthy
+  # ── Ollama — local LLM server (OpenAI-compatible API) ──────────────────────
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      start_period: 15s
+      retries: 8
     restart: unless-stopped
+
+  # ── MCP Postgres server ─────────────────────────────────────────────────────
+  # NOTE: mcp/postgres is distributed via Docker Desktop (requires login).
+  # To enable: docker login, then uncomment this block.
+  #
+  # mcp-postgres:
+  #   image: mcp/postgres
+  #   environment:
+  #     POSTGRES_CONNECTION_STRING: postgresql://user:pass@db:5432/mydb
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   restart: unless-stopped
 
 volumes:
   db_data:
+  ollama_data:

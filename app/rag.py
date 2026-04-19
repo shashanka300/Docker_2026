@@ -9,8 +9,8 @@ LLM_BASE_URL = os.environ.get(
 )
 LLM_MODEL = os.environ.get("LLM_MODEL", "ai/llama3.2")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "ai/mxbai-embed-large")
-CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "400"))
-CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "50"))
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "200"))
+CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "20"))
 
 client = OpenAI(base_url=LLM_BASE_URL, api_key="not-required")
 
