@@ -30,11 +30,11 @@ colima start
 
 ```bash
 # 1. Start the stack (first run pulls ~4 GB of model data)
-docker compose up --build -d
+docker-compose up --build -d
 
 # 2. Pull the LLM models into Ollama (one-time, models are cached in a volume)
-docker compose exec ollama ollama pull llama3.2
-docker compose exec ollama ollama pull mxbai-embed-large
+docker-compose exec ollama ollama pull llama3.2
+docker-compose exec ollama ollama pull mxbai-embed-large
 
 # 3. Open the UI
 open http://localhost:8000
@@ -52,8 +52,8 @@ Then in the browser:
 Edit code, then rebuild only the app container — db and Ollama keep running:
 
 ```bash
-docker-compose up --build -d app
-docker-compose logs -f app          # watch live logs
+docker-compose up --build -d app    # rebuilds app only, db + ollama untouched
+docker-compose logs -f app          # tail live logs
 ```
 
 Unit tests mock all external deps, so run them locally with uv:
@@ -103,8 +103,8 @@ compose.yml        app + db (pgvector) + ollama + mcp-postgres
 ## Useful commands
 
 ```bash
-docker compose logs -f app          # app logs
-docker compose logs -f ollama       # model server logs
-docker compose down -v              # stop and wipe volumes
-docker compose exec ollama ollama list   # see pulled models
+docker-compose logs -f app               # app logs
+docker-compose logs -f ollama            # model server logs
+docker-compose down -v                   # stop and wipe volumes
+docker-compose exec ollama ollama list   # see pulled models
 ```
