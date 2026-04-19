@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker AI Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #1a2332;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #0e3460;
+      color: #fff;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 600; }
+    header p  { font-size: 0.82rem; opacity: 0.75; margin-top: 0.2rem; }
+    .badges   { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .badge {
+      background: rgba(255,255,255,0.15);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+    #stats-pill {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    main {
+      max-width: 1080px;
+      margin: 2rem auto;
+      padding: 0 1.25rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 720px) { main { grid-template-columns: 1fr; } }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    }
+    .card h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #0e3460;
+      border-bottom: 2px solid #e6edf5;
+      padding-bottom: 0.6rem;
+      margin-bottom: 1rem;
+    }
+
+    textarea, input[type="text"], input[type="file"] {
+      width: 100%;
+      font-family: inherit;
+      font-size: 0.88rem;
+    }
+    textarea {
+      padding: 0.7rem;
+      border: 1px solid #d1dae5;
+      border-radius: 6px;
+      resize: vertical;
+      min-height: 130px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: #0e3460; }
+    input[type="text"] {
+      padding: 0.65rem 0.75rem;
+      border: 1px solid #d1dae5;
+      border-radius: 6px;
+      height: 40px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: #0e3460; }
+
+    .row      { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+    .divider  { text-align: center; color: #aab; font-size: 0.78rem; margin: 0.65rem 0; }
+
+    button {
+      padding: 0.55rem 1.1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.87rem;
+      font-family: inherit;
+      font-weight: 500;
+      transition: filter 0.15s;
+    }
+    button:hover   { filter: brightness(0.92); }
+    button:active  { filter: brightness(0.85); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+
+    .btn-primary   { background: #0e3460; color: #fff; }
+    .btn-secondary { background: #e6edf5; color: #0e3460; }
+    .btn-ghost     { background: transparent; color: #666; border: 1px solid #d1dae5; }
+
+    .status {
+      margin-top: 0.7rem;
+      padding: 0.55rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.83rem;
+      display: none;
+    }
+    .status.info    { background: #e6edf5; color: #0e3460; display: block; }
+    .status.success { background: #e6f4ea; color: #1a7e34; display: block; }
+    .status.error   { background: #fce8e6; color: #c62828; display: block; }
+
+    .answer-box {
+      margin-top: 1rem;
+      padding: 1rem 1.1rem;
+      background: #f7f9fc;
+      border-left: 3px solid #0e3460;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.88rem;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      display: none;
+    }
+    .answer-box.show { display: block; }
+
+    .field-label {
+      font-size: 0.8rem;
+      color: #667;
+      display: block;
+      margin: 0.6rem 0 0.25rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Docker AI Demo</h1>
+    <p>Local RAG Q&A — no data leaves your machine</p>
+  </div>
+  <div class="badges">
+    <span class="badge">pgvector</span>
+    <span class="badge">Docker Model Runner</span>
+    <span class="badge">MCP Server</span>
+    <span id="stats-pill" onclick="refreshStats()" title="Click to refresh">
+      <span id="chunk-count">...</span> chunks stored
+    </span>
+  </div>
+</header>
+
+<main>
+  <!-- ── Ingest panel ── -->
+  <div class="card">
+    <h2>1 · Ingest Documents</h2>
+
+    <textarea id="ingest-text" placeholder="Paste any text here — article, docs, code…"></textarea>
+
+    <div class="divider">— or upload a file —</div>
+    <input type="file" id="ingest-file" accept=".txt,.md,.py,.js,.ts,.rst">
+
+    <label class="field-label">Source label (optional)</label>
+    <input type="text" id="ingest-source" placeholder="e.g. docker-guide, my-notes">
+
+    <div class="row">
+      <button class="btn-primary"   onclick="ingestContent()" id="btn-ingest">Ingest</button>
+      <button class="btn-secondary" onclick="loadSample()"    id="btn-sample">Load Sample Doc</button>
+    </div>
+
+    <div id="ingest-status" class="status"></div>
+  </div>
+
+  <!-- ── Query panel ── -->
+  <div class="card">
+    <h2>2 · Ask a Question</h2>
+
+    <input type="text" id="query-input"
+           placeholder="e.g. What are the 4 Dockerfile rules?"
+           onkeydown="if(event.key==='Enter') askQuestion()">
+
+    <div class="row">
+      <button class="btn-primary" onclick="askQuestion()" id="btn-ask">Ask</button>
+    </div>
+
+    <div id="query-status" class="status"></div>
+    <div id="answer-box" class="answer-box"></div>
+  </div>
+</main>
+
+<script>
+  // ── helpers ──────────────────────────────────────────────────────────
+  function setStatus(id, type, msg) {
+    const el = document.getElementById(id);
+    el.className = `status ${type}`;
+    el.textContent = msg;
+  }
+  function setLoading(btnId, loading) {
+    document.getElementById(btnId).disabled = loading;
+  }
+  async function refreshStats() {
+    try {
+      const r = await fetch('/stats');
+      const d = await r.json();
+      document.getElementById('chunk-count').textContent = d.document_chunks;
+    } catch (_) { /* silent */ }
+  }
+
+  // ── ingest ───────────────────────────────────────────────────────────
+  async function ingestContent() {
+    const text   = document.getElementById('ingest-text').value.trim();
+    const file   = document.getElementById('ingest-file').files[0];
+    const source = document.getElementById('ingest-source').value.trim();
+
+    if (!text && !file) {
+      setStatus('ingest-status', 'error', 'Provide text or choose a file.');
+      return;
+    }
+
+    const fd = new FormData();
+    if (file) {
+      fd.append('file', file);
+    } else {
+      fd.append('text', text);
+      fd.append('source', source || 'paste');
+    }
+    if (source) fd.append('source', source);
+
+    setLoading('btn-ingest', true);
+    setStatus('ingest-status', 'info', 'Embedding and storing chunks…');
+    try {
+      const r = await fetch('/ingest', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || 'Ingest failed');
+      setStatus('ingest-status', 'success', `✓ ${d.chunks_ingested} chunks from "${d.source}"`);
+      refreshStats();
+    } catch (e) {
+      setStatus('ingest-status', 'error', `Error: ${e.message}`);
+    } finally {
+      setLoading('btn-ingest', false);
+    }
+  }
+
+  // ── load sample ──────────────────────────────────────────────────────
+  async function loadSample() {
+    setLoading('btn-sample', true);
+    setStatus('ingest-status', 'info', 'Loading sample document…');
+    try {
+      const r = await fetch('/ingest/sample', { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || 'Failed');
+      setStatus('ingest-status', 'success', `✓ ${d.chunks_ingested} chunks from "${d.source}"`);
+      refreshStats();
+    } catch (e) {
+      setStatus('ingest-status', 'error', `Error: ${e.message}`);
+    } finally {
+      setLoading('btn-sample', false);
+    }
+  }
+
+  // ── query ────────────────────────────────────────────────────────────
+  async function askQuestion() {
+    const q   = document.getElementById('query-input').value.trim();
+    const box = document.getElementById('answer-box');
+    if (!q) { setStatus('query-status', 'error', 'Enter a question first.'); return; }
+
+    setLoading('btn-ask', true);
+    setStatus('query-status', 'info', 'Retrieving context and generating answer…');
+    box.classList.remove('show');
+
+    try {
+      const r = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || 'Query failed');
+      setStatus('query-status', 'success', 'Answer ready');
+      box.textContent = d.answer;
+      box.classList.add('show');
+    } catch (e) {
+      setStatus('query-status', 'error', `Error: ${e.message}`);
+    } finally {
+      setLoading('btn-ask', false);
+    }
+  }
+
+  // load stats on page open
+  refreshStats();
+</script>
+</body>
+</html>
