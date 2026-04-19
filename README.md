@@ -47,20 +47,19 @@ Then in the browser:
    - *How does multi-stage build reduce image size?*
    - *What is the difference between ivfflat and hnsw?*
 
-## Local development (no Docker)
+## Development workflow
+
+Edit code, then rebuild only the app container — db and Ollama keep running:
 
 ```bash
-uv sync
-# needs Postgres+pgvector and Ollama running locally
-DATABASE_URL=postgresql://user:pass@localhost:5432/mydb \
-LLM_BASE_URL=http://localhost:11434/v1 \
-uv run uvicorn app.main:app --reload
+docker-compose up --build -d app
+docker-compose logs -f app          # watch live logs
 ```
 
-Run tests (no external services needed):
+Run the unit tests inside Docker so the environment matches production:
 
 ```bash
-uv run pytest -v
+docker-compose run --rm app uv run pytest -v
 ```
 
 ## Project layout
@@ -98,8 +97,8 @@ compose.yml        app + db (pgvector) + ollama + mcp-postgres
 | `LLM_BASE_URL` | `http://localhost:11434/v1` | Ollama API URL |
 | `LLM_MODEL` | `llama3.2` | Chat model |
 | `EMBED_MODEL` | `mxbai-embed-large` | Embedding model |
-| `CHUNK_SIZE` | `400` | Words per chunk |
-| `CHUNK_OVERLAP` | `50` | Overlap between chunks |
+| `CHUNK_SIZE` | `200` | Words per chunk |
+| `CHUNK_OVERLAP` | `20` | Overlap between chunks |
 
 ## Useful commands
 
